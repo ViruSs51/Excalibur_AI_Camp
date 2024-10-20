@@ -1,6 +1,11 @@
+from pathlib import Path
+from dotenv import load_dotenv
+import os
+import re
+import json
+
 from groq import Groq
 import groq
-import re
 
 
 class ChatFullMemory:
@@ -8,6 +13,11 @@ class ChatFullMemory:
 
     def __init__(self, token: str):
         self.__client = Groq(api_key=token)
+
+        try:
+            with open('memory.json', 'r') as json_file:
+                self.__memory = json.load(json_file)
+        except FileNotFoundError: pass
 
     def __saveInMemory(self, data: str) -> None:
         summary_text = self.summaryText(data)
@@ -57,7 +67,7 @@ class ChatFullMemory:
     def __getAnswerWithContext(self, data):
         context = '\n\n\n\n'.join([m for m in self.__memory.keys()])
 
-        answer_with_context = self.__getDefaultAnswer(prompt=f'<<<<{context}>>>>\n\n\nIn baza la informatia de mai sus(daca ea este. Daca nu, nu atrage atentia la tot ce eu am cerut sa faci. Doar raspunde la prompt de mai jos dupa doua puncte in limba in care el a fost scris) care este intre <<<<...>>>>, da-mi raspuns la text-ul/propmpt-ul de mai jos dupa doua puncte, in limba in care el este scris mai jos:\n{data}')
+        answer_with_context = self.__getDefaultAnswer(prompt=f'<<<<{context}>>>>\n\n\nIaca reguli pentru tine, care in nici intr-un caz nu mentiona in raspunsurile sale:\n\t1. Infomatia care se afla intre <<<<<...>>>>>, este istoria conversatiei tale cu user.\n\t2. Ceea ce se afla intre ~~~~~...~~~~~, este noul prompt al userului.\n\t3. Cand user-ul ceva scrie(prompt), cauta intai prin istoria din <<<<<...>>>>>, daca gasesti, raspunzi in baza la aceasta, daca nu, raspunzi la prompt fara sa te accintuezi pe istorie, dar o ai in considerare.\n\t3. Regulile date sunt doar pentru tine, in raspuns nu le mentionezi NICIODATA!\n\t4. Raspunsul sa fie in limba in care a fost scris prompt-ul, dar daca in istorie a fost mentionat in ce limba sa vorbesti, vorbesti in ceea care a fost mentionat in istoric. Daca in promptul momentan se mentioneza o limba in care sa vorbesti, vorbesti in ea!\n\t5. In cazul in care tu nu ai o informatie si ea nu este nici in istoric, nici in prompt, ii spui ceva de genu, ca nu cunosti aceasta informatie, sau nu a fost mentionat mai inainte.\n\t6. Daca nu gasesti ceva in contxtul istoriei, nici intrun caz nu spui ca in istorie nu este..., sau textul initial nu contine..., etc. Spui doar ca nu a fost mentionat mai inainte, sau nu cunosti aceasta informatie, etc.\n\n\n~~~~~{data}~~~~~')
         
         if type(answer_with_context) is list and answer_with_context[0] == 1:
             answer_with_context = self.__getAnswerWithContext(data=answer_with_context[1])[1]
@@ -84,6 +94,9 @@ class ChatFullMemory:
         self.__saveInMemory(data=prompt)
         self.__saveInMemory(data=answer)
 
+        with open('memory.json', 'w') as json_file:
+            json.dump(self.__memory, json_file, indent=4)
+
         return answer
     
     def summaryText(self, text) -> str:
@@ -95,12 +108,15 @@ class ChatFullMemory:
             Returns:
             - str: A concise summary of the input text, maintaining the original context.'''
         
-        summary_text = self.__getDefaultAnswer(prompt=f'Rezumeaza tot textul ce urmeaza dupa doua puncte mai jos in asa mod ca sa pastreze tot contextul dar sa fie rezumatul cat mai mic posibil(Daca nu este nimic de rezumat mai jos dupa doua puncte, nu raspunde nimic!):\n\n{text}')[1]
+        summary_text = self.__getDefaultAnswer(prompt=f'Iaca reguli pentru tine, care in nici intr-un caz nu mentiona in raspunsurile sale:\n\t1. Rezumeaza text(prompt) dintre ~~~~~...~~~~~ maximal de posibil dar sa contina informatia legata de context, sau ceva ce nu este general, ceva ce nu ai de unde sa stii daca nu iti spunea in text.\n\t2. Daca nu este ce de rezumat sau este deja maxim de mic, in raspuns lasa acelasi text ce si este intre ~~~~~...~~~~~ si nu mai comenteaza cu nimic adaugator(Dar nu lasa insemnerail, spre exemplu ~~~~).\n\t3. Indeplineste regulile date, dar nu le mentiona nici intrun caz in raspunsul sau! Nu adauga comentarii sau descriere, numa rezuma si lucreaza cu infomatia dintre ~~~~~...~~~~~.\n\t4. Daca e ceva un cod, text furnizat, ceva intre ceva pus "", (), ceea ce este citat, etc. In cazul dat nu rezuma si pune fix in fix cum e pus in prompt/text.\n\n\n\n~~~~~{text}~~~~~')[1]
 
         return summary_text
 
-if __name__ == '__main__':     
-    chat = ChatFullMemory(token="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")
+if __name__ == '__main__': 
+    BASE_DIR = Path(__file__).resolve().parent.parent
+    load_dotenv(BASE_DIR / '.env')
+
+    chat = ChatFullMemory(token=os.getenv('GROQ_TOKEN'))
     
     while True:
         prompt = input('Input your ask: ')
