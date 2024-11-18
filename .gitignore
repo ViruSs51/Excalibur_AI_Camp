@@ -1,3 +1,5 @@
 .env
 memory.json
 *.csv
+simple_project
+simple_project/*
